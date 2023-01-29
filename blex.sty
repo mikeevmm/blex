@@ -1,0 +1,114 @@
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{expl3}
+\ProvidesExplPackage{blex}{2023/01/27}{0.0.0}{Lambda calculus in LaTeX3}
+
+% Error messages
+\msg_new:nnnn {blex} {bad_var_name}
+    {Invalid\ variable\ name\ .#1.\ \\ \msg_line_context:}
+    {Variable\ names\ must\ consist\ of\ a\ latin\ character\ or\ underscore,
+     followed\ by\ any\ number\ of\ latin\ characters,\ digits,\ or\ underscores.}
+
+% Variables
+\quark_new:N \l_blex_space_quark
+
+\regex_new:N \l_blex_varname_regex
+\regex_set:Nn \l_blex_varname_regex {^[a-zA-Z]\w*$}
+
+\str_new:N \l_blex_arg_str
+\tl_new:N \l_blex_body_tl
+\int_new:N \l_blex_paren_int
+
+\seq_new:N \l_blex_args_seq
+\seq_new:N \l_blex_body_seq
+\seq_new:N \l_blex_paren_seq
+
+% Declare the λ character as the lambda command
+\DeclareUnicodeCharacter{03BB}{\blex_curry:}
+
+% Functions
+\cs_new:Npn \blex_curry: {
+    \str_if_empty:NF \l_blex_arg_str {
+        \seq_push:NV \l_blex_args_seq \l_blex_arg_str
+    }
+    \str_clear:N \l_blex_arg_str % Clear the argument name
+    \blex_parse_arg:N % Begin gobbling the name
+}
+\cs_new:Npn \blex_check_arg_name:V #1 {
+    \tl_show:N #1
+    \exp_args:NNo \regex_match:NnF \l_blex_varname_regex {#1}
+        {\msg_fatal:nnx {blex} {bad_var_name} {#1}}
+}
+\cs_new:Npn \blex_parse_arg:N #1 {
+    \tl_if_eq:NNTF #1 \l_blex_space_quark {
+        \blex_parse_arg:N
+    }{
+        \str_set:Nx \l_tmpa_str {#1}
+        \str_case:NnF \l_tmpa_str
+        {
+            {.} {
+                % Finished reading this argument's name, and a currying of what follows
+                % is being requested.
+                \blex_check_arg_name:V \l_blex_arg_str
+
+                \blex_curry:
+            }
+            {(} {
+                % We've found the beginning of the lambda's body.
+                \blex_check_arg_name:V \l_blex_arg_str
+                \seq_push:NV \l_blex_body_seq \l_blex_body_tl
+                \tl_clear:N \l_blex_body_tl
+                \seq_push:NV \l_blex_paren_seq \l_blex_paren_int
+                \int_zero:N \l_blex_paren_int
+                \blex_parse_body:N
+            }
+        }{
+            % Otherwise, consider this token to be part of the variable name.
+            \str_put_right:Nn \l_blex_arg_str {#1}
+
+            % Gobble next character.
+            \blex_parse_arg:N
+        }
+    }
+}
+\cs_new:Npn \blex_parse_body:N #1 {
+    \str_set:Nn \l_tmpa_str {#1}
+    \bool_set_false:N \l_tmpa_bool
+    \str_case:Vn \l_tmpa_str {
+        {(} { % Opening parenthesis
+            \int_incr:N \l_blex_paren_int
+        }
+        {)} { % Closing parenthesis
+            \int_compare:nNnTF {\l_blex_paren_int} = {0} {
+                \bool_set_true:N \l_tmpa_bool
+            }{
+                % else
+                \int_decr:N \l_blex_paren_int
+            }
+        }
+    }
+
+    \bool_if:NTF \l_tmpa_bool {
+        \blex_make_lambda:
+    }{ % else
+        \tl_put_right:Nn \l_blex_body_tl {#1}
+        \blex_parse_body:N
+    }
+}
+\cs_new:Npn \blex_make_lambda: {
+    % TODO
+    \tl_show:N \l_blex_body_tl
+}
+
+% User interface
+\NewDocumentEnvironment{LambdaCalc}{+b}{
+    \group_begin:
+    \tl_set:Nn \l_tmpa_tl {#1}
+    \exp_args:NNno \tl_set_rescan:Nnn
+        \l_tmpa_tl
+        { \char_set_catcode_letter:n{ 32 } }
+        { \l_tmpa_tl }
+    \exp_args:NNx \tl_replace_all:Nnn \l_tmpa_tl { \char_generate:nn{32}{11} } { \l_blex_space_quark }
+    \tl_show:N \l_tmpa_tl
+    \l_tmpa_tl
+    \group_end:
+}{}
