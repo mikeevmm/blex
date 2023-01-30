@@ -2,13 +2,19 @@
 \RequirePackage{expl3}
 \ProvidesExplPackage{blex}{2023/01/27}{0.0.0}{Lambda calculus in LaTeX3}
 
+% Must be declared in preamble.
+% Ideally, "03BB would only have this value inside LambdaCalc environments,
+% see https://tex.stackexchange.com/q/336697
+% TODO: Implement local unicode mapping.
+\DeclareUnicodeCharacter{03BB}{\__blex_lambda:}
+
 % Blex BNF grammar:
 % Some of the function documentation below refers to this grammar.
 % To avoid repetition, it is presented only here.
 %
 % <lambda>         ::= <identifier> <group> 
 %                    | <identifier> '.' <lambda>
-% <whitespace>     ::= \q_blex_userspace*
+% <whitespace>     ::= \s_blex_userspace*
 % <variable name>  ::= <whitespace> [a-zA-Z\_][0-9a-zA-Z\_]* <whitespace>
 % <group>          ::= '(' <whitespace> <expression> <whitespace> ')'
 % <expression>     ::= <item>+
@@ -23,17 +29,23 @@
      followed\ by\ any\ number\ of\ latin\ characters,\ digits,\ or\ underscores.}
 
 % Constants
-\quark_new:N \q_blex_userspace
-\quark_new:N \q_blex_eof
+\scan_new:N \s_blex_stop
+\scan_new:N \s_blex_userspace
+\scan_new:N \s_blex_eof
 
 % Functions
 
-\cs_new:Npn \__blex_dehydrate:VN #1 #2 {
+\cs_new:Npn \__blex_split_first:NNNw #1 #2 #3 #4 \s_blex_stop {
+    \tl_set:Nn #1 {#3}
+    \tl_set:Nn #2 {#4}
+}
+
+\cs_new:Npn \__blex_dehydrate:NV #1 #2 {
     % Dehydrate
     %
     % Takes a token list in #2, meant to be a sequence of tokens given by the user,
-    % and converts literal (unescaped, catcode 10) spaces into the \q_blex_userspace
-    % quark. The result is put in token list #1.
+    % and converts literal (unescaped, catcode 10) spaces into the \s_blex_userspace
+    % scan mark. The result is put in token list #1.
     %
     % See also \__blex_hydrate:NV.
     \exp_args:NNno \tl_set_rescan:Nnn
@@ -43,30 +55,22 @@
     \exp_args:NNx \tl_replace_all:Nnn
         #1
         { \char_generate:nn{32}{11} }
-        { \q_blex_userspace }
+        { \s_blex_userspace }
 }
 
-\cs_new:Npn \__blex_hydrate:VN #1 #2 {
+\cs_new:Npn \__blex_hydrate:NV #1 #2 {
     % Hydrate
     %
     % Takes a token list in #2, meant to be a sequence of tokens obtained by dehydration,
-    % and converts the \q_blex_userspace quark back into (unescaped, catcode 10) spaces.
+    % and converts the \s_blex_userspace scan mark back into (unescaped, catcode 10) spaces.
     % The result is put into token list #1.
     %
     % See also \__blex_dehydrate:NV.
     \exp_args:NNo \tl_set:Nn #2 {#2}
     \exp_args:NNnx \tl_replace_all:Nnn
         #1
-        { \q_blex_userspace }
+        { \s_blex_userspace }
         { \char_generate:nn{32}{10} }
-}
-
-\cs_new:Npn \__blex_expression:N #1 {
-    % Expression
-    %
-    % Scans a lambda expression, that is a <lambda> as defined by the
-    % BNF grammar.
-    % Places the scanned sequence into the token list #1.
 }
 
 \cs_new:Npn \__blex_lambda: {
@@ -81,13 +85,11 @@
     % TODO
 }
 
-\cs_new:Npn \__blex_initialize {
+\cs_new:Npn \__blex_initialize: {
     % Initialize
     %
     % This function is called upon enetring a new LambdaCalc environment, after the user
     % input is dehydrated (see \__blex_dehydrate:NV).
-    
-    \DeclareUnicodeCharacter{03BB}{\__blex_expression:}
 }
 
 \cs_new:Npn \__blex_understand:NV #1 #2 {
@@ -99,7 +101,33 @@
     % The expanded output is placed in the token list given as argument #1.
     % The input is given in argument #2.
 
-    % TODO
+}
+
+\cs_new:Npn \__blex_understand_eat:NNw #1 #2 #3 \s_blex_eof {
+    % Auxiliary recursive function to \__blex_understand:NV
+    %
+    % Takes as arguments:
+    %
+    %   #1      First argument of \__blex_understand:NV
+    %   #2      Second argument of \__blex_understnad:NV
+    %   #3      Token to be eaten
+    %
+    % This function checks if the eaten token is \s_blex_userspace. If so,
+    % it leaves it in space. Otherwise, it expands the token once and tries
+    % again.
+    \tl_set:Nn \l_tmpa_tl {#3}
+    \tl_if_eq:NNF \s_blex_userspace #3 {
+        % We've reached the end of the stream.
+        % Nothing left to do.
+    }{
+        % There's something left other than an eof.
+        % #3 can be one or more tokens. In any case, the last element of #3
+        % will be \s_blex_eof
+        \__blex_split_first:NNNw \l_tmpa_tl \l_tmpb_tl #3 \s_blex_stop
+        \tl_show:N \l_tmpa_tl
+        \tl_show:N \l_tmpb_tl
+        % TODO
+    }
 }
 
 % User interface
@@ -109,8 +137,8 @@
     \__blex_dehydrate:NV \l_tmpb_tl \l_tmpa_tl
     \__blex_initialize:
 
-    % Add a quark signaling EOF so that scanning functions can manage unclosed groups.
-    \tl_put_right:Nn \l_tmpb_tl {\q_blex_eof}
+    % Add a scan mark signaling EOF so that scanning functions can manage unclosed groups.
+    \tl_put_right:Nn \l_tmpb_tl {\s_blex_eof \s_blex_eof}
 
     % Resolve lambdas.
     \__blex_understand:NV \l_tmpa_tl \l_tmpb_tl
