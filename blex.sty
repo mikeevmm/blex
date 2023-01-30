@@ -15,12 +15,13 @@
 % <lambda>         ::= <identifier> <group> 
 %                    | <identifier> '.' <lambda>
 % <whitespace>     ::= \s_blex_userspace*
-% <variable name>  ::= <whitespace> [a-zA-Z\_][0-9a-zA-Z\_]* <whitespace>
+% <identifier>     ::= <whitespace> [a-zA-Z\_][0-9a-zA-Z\_]* <whitespace>
 % <group>          ::= '(' <whitespace> <expression> <whitespace> ')'
 % <expression>     ::= <item>+
 % <item>           ::= <group>
 %                    | <identifier>
 %                    | <other>
+% <other>          ::= (Any latex character)
 
 % Error messages
 \msg_new:nnnn {blex} {bad_var_name}
